@@ -33,13 +33,13 @@ spec:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70  # Target 50% CPU utilization
+        averageUtilization: 80  # Target 50% CPU utilization
   - type: Resource
     resource:
       name: memory
       target:
         type: Utilization
-        averageUtilization: 70  # Target 50% CPU utilization
+        averageUtilization: 80  # Target 50% CPU utilization
 """
                     } else if (params.service == 'conversation-server') {
                         hpaFileContent = """
@@ -61,13 +61,13 @@ spec:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70   
+        averageUtilization: 80   
   - type: Resource
     resource:
       name: memory
       target:
         type: Utilization
-        averageUtilization: 70 
+        averageUtilization: 80 
 """
                     } else if (params.service == 'neo4j-enterprise') {
                         hpaFileContent = """
@@ -139,13 +139,13 @@ spec:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70  # Target 50% CPU utilization
+        averageUtilization: 80  # Target 50% CPU utilization
   - type: Resource
     resource:
       name: memory
       target:
         type: Utilization
-        averageUtilization: 70  # Target 50% CPU utilization
+        averageUtilization: 80  # Target 50% CPU utilization
 """
                     }
 
