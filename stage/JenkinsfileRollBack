@@ -1,0 +1,144 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'DEPLOYMENT_NAME', choices: ['celery-api-deployment', 'conversation-server-deployment', 'mom-api-deployment'], description: 'Select the micro-service deployment to roll back to.')
+        string(name: 'IMAGE_TAG', defaultValue: '', description: 'Docker image tag to roll back to (e.g., Git commit hash)')
+    }
+
+    environment {
+        DOCKER_REGISTRY_CELERY = credentials('celery-api-docker-registry')
+        DOCKER_REGISTRY_CONVO = credentials('convo-docker-registry')
+        DOCKER_REGISTRY_MOM_API = credentials('mom-api-docker-registry') // Assuming you have this credential set
+        GKE_CLUSTER = credentials('mom-core-gke-cluster')
+        GKE_ZONE = credentials('gke-zone')
+        GCP_PROJECT = credentials('gcp-project')
+        GOOGLE_APPLICATION_CREDENTIALS = credentials('google-application-credentials')
+    }
+
+    stages {
+        stage('Rollback to Specified Docker Image') {
+            steps {
+                script {
+                    // Validate that the IMAGE_TAG is not empty
+                    if (!params.IMAGE_TAG) {
+                        error("No Docker image tag specified for rollback.")
+                    }
+
+                    // Print the deployment and image tag being rolled back
+                    echo "Rolling back ${params.DEPLOYMENT_NAME} to image tag: ${params.IMAGE_TAG}"
+
+                    // Prepare GKE authentication
+                    sh """
+                    sudo gcloud auth activate-service-account --key-file=${GOOGLE_APPLICATION_CREDENTIALS}
+                    sudo gcloud container clusters get-credentials ${GKE_CLUSTER} --zone ${GKE_ZONE} --project ${GCP_PROJECT}
+                    """
+
+                    // Conditional logic based on selected deployment
+                    if (params.DEPLOYMENT_NAME == 'celery-api-deployment') {
+                        sh """
+                        kubectl set image deployment/celery-api-deployment celery-api=${DOCKER_REGISTRY_CELERY}/celery-api:${params.IMAGE_TAG} -n devops
+                        kubectl rollout status deployment/celery-api-deployment -n devops
+                        """
+                    } else if (params.DEPLOYMENT_NAME == 'conversation-server-deployment') {
+                        sh """
+                        kubectl set image deployment/conversation-server-deployment conversation-server=${DOCKER_REGISTRY_CONVO}/convo:${params.IMAGE_TAG} -n devops
+                        kubectl rollout status deployment/conversation-server-deployment -n devops
+                        """
+                    } else if (params.DEPLOYMENT_NAME == 'mom-api-deployment') {
+                        sh """
+                        kubectl set image deployment/mom-api-deployment mom-api=${DOCKER_REGISTRY_MOM_API}/mom-api:${params.IMAGE_TAG} -n devops
+                        kubectl rollout status deployment/mom-api-deployment -n devops
+                        """
+                    } else {
+                        error("Unknown deployment selected")
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Rollback pipeline finished."
+
+            // Optional cleanup actions
+            script {
+                // Check the deployment status
+                sh """
+                echo "Checking the deployment status" && kubectl get pods -n app
+                """
+                
+                // Additional cleanup if necessary
+            }
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+// pipeline {
+//     agent any
+
+//     parameters {
+//         string(name: 'IMAGE_TAG', defaultValue: '', description: 'Docker image tag to roll back to (e.g., Git commit hash)')
+//     }
+
+//     environment {
+//         DOCKER_REGISTRY = credentials('mom-core-docker-registry')
+//         GKE_CLUSTER = credentials('mom-core-gke-cluster')
+//         GKE_ZONE = credentials('gke-zone')
+//         GCP_PROJECT = credentials('gcp-project')
+//         GOOGLE_APPLICATION_CREDENTIALS = credentials('google-application-credentials')
+//     }
+
+//     stages {
+//         stage('Rollback to Specified Docker Image') {
+//             steps {
+//                 script {
+//                     // Validate that the IMAGE_TAG is not empty
+//                     if (!params.IMAGE_TAG) {
+//                         error("No Docker image tag specified for rollback.")
+//                     }
+
+//                     // Print the image tag being rolled back to
+//                     echo "Rolling back to image tag: ${params.IMAGE_TAG}"
+
+//                     // Prepare GKE authentication
+//                     sh """
+//                     sudo gcloud auth activate-service-account --key-file=${GOOGLE_APPLICATION_CREDENTIALS}
+//                     sudo gcloud container clusters get-credentials ${GKE_CLUSTER} --zone ${GKE_ZONE} --project ${GCP_PROJECT}
+//                     """
+
+//                     // Rollback to the specified image tag
+//                     sh """
+//                     kubectl set image deployment/momentum-core-deployment momentum-core=${DOCKER_REGISTRY}/momentum-core:${params.IMAGE_TAG} -n app
+//                     kubectl rollout status deployment/momentum-core-deployment -n app
+//                     """
+//                 }
+//             }
+//         }
+//     }
+
+//     post {
+//         always {
+//             echo "Rollback pipeline finished."
+
+//             // Optional cleanup actions
+//             script {
+//                 // Check the deployment status
+//                 sh """
+//                 echo "Checking the deployment status" && kubectl get pods -n app
+//                 """
+                
+//                 // Additional cleanup if necessary
+//             }
+//         }
+//     }
+// }

@@ -1,0 +1,303 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'REPLICAS', defaultValue: '2', description: 'Number of replicas for the Neo4j StatefulSet (default is: 2)')
+        string(name: 'STORAGE_SIZE', defaultValue: '30Gi', description: 'Storage size for the volume claim template')
+        choice(name: 'SERVICE_TYPE', choices: ['LoadBalancer', 'ClusterIP'], description: 'Kubernetes service type')
+        string(name: 'MIN_REPLICAS', defaultValue: '4', description: 'Minimum number of replicas for Neo4j HPA')
+        string(name: 'MAX_REPLICAS', defaultValue: '15', description: 'Maximum number of replicas for Neo4j HPA')
+        string(name: 'AVG_UTILIZATION', defaultValue: '70', description: 'Average CPU utilization target for Neo4j HPA')
+    }
+
+    stages {
+        stage('Generate Neo4j Deployment YAML') {
+            steps {
+                script {
+                    def deploymentYamlPath = 'neo4j-deployment.yaml'
+                    
+                    def neo4jYamlContent = """\
+# Source: neo4j/templates/neo4j-statefulset.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: "neo4j-auth"
+  namespace: "neo4j-db"
+  labels:
+    app: "neo4j"
+type: Opaque
+data:
+  NEO4J_AUTH: "bmVvNGovbXloYXJkc2VjcmV0cGFzc3dvcmQ="
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "neo4j-enterprise-k8s-config"
+  namespace: "neo4j-db"
+  labels:
+    app: "neo4j"
+data:
+  server.default_listen_address: "0.0.0.0"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "neo4j-enterprise-user-config"
+  namespace: "neo4j-db"
+  labels:
+    app: "neo4j"
+data:
+  server.config.strict_validation.enabled: "false"
+  server.jvm.additional: |-  
+    -XX:+UseG1GC
+    -XX:-OmitStackTraceInFastThrow
+    -XX:+AlwaysPreTouch
+    -XX:+UnlockExperimentalVMOptions
+    -XX:+TrustFinalNonStaticFields
+    -XX:+DisableExplicitGC
+    -Djdk.nio.maxCachedBufferSize=1024
+    -Dio.netty.tryReflectionSetAccessible=true
+    -Djdk.tls.ephemeralDHKeySize=2048
+    -Djdk.tls.rejectClientInitiatedRenegotiation=true
+    -XX:FlightRecorderOptions=stackdepth=256
+    -XX:+UnlockDiagnosticVMOptions
+    -XX:+DebugNonSafepoints
+    --add-opens=java.base/java.nio=ALL-UNNAMED
+    --add-opens=java.base/java.io=ALL-UNNAMED
+    --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+    -Dlog4j2.disable.jmx=true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "neo4j-enterprise-default-config"
+  namespace: "neo4j-db"
+  labels:
+    app: "neo4j"
+data:
+  server.metrics.csv.rotation.compression: zip
+  server.windows_service_name: neo4j
+  server.panic.shutdown_on_panic: 'true'
+  server.logs.config: /config/server-logs.xml/server-logs.xml
+  server.logs.user.config: /config/user-logs.xml/user-logs.xml
+  server.bolt.connection_keep_alive: "30s"
+  server.bolt.connection_keep_alive_for_requests: "ALL"
+  server.bolt.connection_keep_alive_streaming_scheduling_interval: "30s"
+  server.backup.listen_address: "0.0.0.0:6362"
+  internal.dbms.ssl.system.ignore_dot_files: "true"
+  server.directories.logs: "/logs"
+  server.directories.metrics: "/metrics"
+  server.directories.import: "/import"
+  dbms.ssl.policy.bolt.client_auth: "NONE"
+  dbms.ssl.policy.https.client_auth: "NONE"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "neo4j-enterprise-server-logs-config"
+  namespace: "neo4j-db"
+  labels:
+    app: "neo4j"
+data:
+  server-logs.xml: |-
+    <?xml version="1.0" encoding="UTF-8"?>
+    <Configuration status="ERROR" monitorInterval="30" packages="org.neo4j.logging.log4j">
+        <Appenders>
+            <RollingRandomAccessFile name="DebugLog" fileName="\${config:server.directories.logs}/debug.log"
+                                     filePattern="\$\${config:server.directories.logs}/debug.log.%02i">
+                <Neo4jDebugLogLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSSZ}{GMT+0} %-5p [%c{1.}] %m%n"/>
+                <Policies>
+                    <SizeBasedTriggeringPolicy size="20 MB"/>
+                </Policies>
+                <DefaultRolloverStrategy fileIndex="min" max="7"/>
+            </RollingRandomAccessFile>
+            <RollingRandomAccessFile name="HttpLog" fileName="\${config:server.directories.logs}/http.log"
+                                     filePattern="\$\${config:server.directories.logs}/http.log.%02i">
+                <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSSZ}{GMT+0} %-5p %m%n"/>
+                <Policies>
+                    <SizeBasedTriggeringPolicy size="20 MB"/>
+                </Policies>
+                <DefaultRolloverStrategy fileIndex="min" max="5"/>
+            </RollingRandomAccessFile>
+            <RollingRandomAccessFile name="QueryLog" fileName="\${config:server.directories.logs}/query.log"
+                                     filePattern="\$\${config:server.directories.logs}/query.log.%02i">
+                <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSSZ}{GMT+0} %-5p %m%n"/>
+                <Policies>
+                    <SizeBasedTriggeringPolicy size="20 MB"/>
+                </Policies>
+                <DefaultRolloverStrategy fileIndex="min" max="7"/>
+            </RollingRandomAccessFile>
+            <RollingRandomAccessFile name="SecurityLog" fileName="\${config:server.directories.logs}/security.log"
+                                     filePattern="\$\${config:server.directories.logs}/security.log.%02i">
+                <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSSZ}{GMT+0} %-5p %m%n"/>
+                <Policies>
+                    <SizeBasedTriggeringPolicy size="20 MB"/>
+                </Policies>
+                <DefaultRolloverStrategy fileIndex="min" max="7"/>
+            </RollingRandomAccessFile>
+        </Appenders>
+        <Loggers>
+            <Root level="INFO">
+                <AppenderRef ref="DebugLog"/>
+            </Root>
+            <Logger name="QueryLogger" level="INFO" additivity="false">
+                <AppenderRef ref="QueryLog"/>
+            </Logger>
+            <Logger name="HttpLogger" level="INFO" additivity="false">
+                <AppenderRef ref="HttpLog"/>
+            </Logger>
+            <Logger name="SecurityLogger" level="INFO" additivity="false">
+                <AppenderRef ref="SecurityLog"/>
+            </Logger>
+        </Loggers>
+    </Configuration>
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "neo4j-enterprise-user-logs-config"
+  namespace: "neo4j-db"
+  labels:
+    app: "neo4j"
+data:
+  user-logs.xml: |-
+    <?xml version="1.0" encoding="UTF-8"?>
+    <Configuration status="ERROR" monitorInterval="30" packages="org.neo4j.logging.log4j">
+        <Appenders>
+            <RollingRandomAccessFile name="Neo4jLog" fileName="\${config:server.directories.logs}/neo4j.log"
+                                     filePattern="\$\${config:server.directories.logs}/neo4j.log.%02i">
+                <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSSZ}{GMT+0} %-5p %m%n"/>
+                <Policies>
+                    <SizeBasedTriggeringPolicy size="20 MB"/>
+                </Policies>
+                <DefaultRolloverStrategy fileIndex="min" max="7"/>
+            </RollingRandomAccessFile>
+            <Console name="ConsoleAppender" target="SYSTEM_OUT">
+                <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSSZ}{GMT+0} %-5p %m%n"/>
+            </Console>
+        </Appenders>
+        <Loggers>
+            <Root level="INFO">
+                <AppenderRef ref="Neo4jLog"/>
+                <AppenderRef ref="ConsoleAppender"/>
+            </Root>
+        </Loggers>
+    </Configuration>
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: "neo4j-enterprise"
+  namespace: "neo4j-db"
+  labels:
+    app: "neo4j"
+spec:
+  serviceName: "neo4j-enterprise"
+  replicas: ${params.REPLICAS}
+  selector:
+    matchLabels:
+      app: "neo4j"
+  template:
+    metadata:
+      labels:
+        app: "neo4j"
+    spec:
+      containers:
+        - name: neo4j
+          image: "neo4j:latest"
+          ports:
+            - containerPort: 7474
+            - containerPort: 7687
+          volumeMounts:
+            - name: neo4j-data
+              mountPath: /data
+            - name: neo4j-logs
+              mountPath: /logs
+            - name: neo4j-config
+              mountPath: /config
+          env:
+            - name: NEO4J_dbms_security_procedures_unrestricted
+              value: "apoc.*"
+            - name: NEO4J_dbms_security_procedures_allowlist
+              value: "apoc.*, dbms.security.*"
+            - name: NEO4J_dbms_active_database
+              value: "neo4j"
+      volumes:
+        - name: neo4j-data
+          persistentVolumeClaim:
+            claimName: neo4j-data-pvc
+        - name: neo4j-logs
+          emptyDir: {}
+        - name: neo4j-config
+          configMap:
+            name: neo4j-enterprise-default-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "neo4j-enterprise"
+  namespace: "neo4j-db"
+spec:
+  type: ${params.SERVICE_TYPE}
+  ports:
+    - port: 7474
+      targetPort: 7474
+      protocol: TCP
+    - port: 7687
+      targetPort: 7687
+      protocol: TCP
+  selector:
+    app: "neo4j"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: neo4j-data-pvc
+  namespace: "neo4j-db"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: ${params.STORAGE_SIZE}
+"""
+
+                    writeFile(file: deploymentYamlPath, text: neo4jYamlContent)
+                    sh 'kubectl apply -f neo4j-deployment.yaml'
+                }
+            }
+        }
+
+        stage('Generate Neo4j HPA YAML') {
+            steps {
+                script {
+                    def hpaYaml = """\
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: neo4j-enterprise
+  namespace: neo4j-db
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: neo4j-enterprise
+  minReplicas: ${params.MIN_REPLICAS}
+  maxReplicas: ${params.MAX_REPLICAS}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: ${params.AVG_UTILIZATION}
+"""
+
+                    def hpaYamlPath = 'neo4j-hpa.yaml'
+                    writeFile(file: hpaYamlPath, text: hpaYaml)
+                    sh 'kubectl apply -f neo4j-hpa.yaml'
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-graph-deployment
+  namespace: app
+  labels:
+    app: knowledge-graph
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knowledge-graph
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%    
+  template:
+    metadata:
+      labels:
+        app: knowledge-graph
+    spec:
+      serviceAccountName: mcore-auth-role
+      terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: vault-init
+          image: asia-south1-docker.pkg.dev/staging-433102/knowledge-graph/knowledge-graph:latest 
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Updating packages and installing required tools..."
+              apt-get update && apt-get install -y curl jq
+
+              VAULT_ADDR="http://vault-internal.vault:8200"
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              
+              # Authenticate with Vault
+              VAULT_RESPONSE=$(curl -s -X POST -H "X-Vault-Request: true" -d "{\"jwt\": \"$SA_TOKEN\", \"role\": \"mcore-role\"}" \
+                $VAULT_ADDR/v1/auth/kubernetes/login)
+              VAULT_TOKEN=$(echo $VAULT_RESPONSE | jq -r '.auth.client_token')
+              
+              # Fetch secrets from Vault
+              VAULT_SECRET=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/secret1/data/kg)
+              
+              # Extract key-value pairs and write to /app/.env
+              echo "Writing secrets to /app/.env..."
+              SECRET_DATA=$(echo $VAULT_SECRET | jq -r '.data.data')
+              echo "$SECRET_DATA" | jq -r 'to_entries[] | "\(.key)=\(.value)"' > /app/.env
+
+              # Fetch secrets from Vault
+              NEWRELIC_INI=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/secret1/data/kg_newrelic_ini" | jq -r '.data.data["newrelic.ini"]')
+
+              # Write newrelic.ini to /app/newrelic.ini
+              echo "Writing newrelic.ini to /app/newrelic.ini..."
+              echo "$NEWRELIC_INI" > /app/newrelic.ini
+          volumeMounts:
+            - name: env-file
+              mountPath: /app
+      containers:
+        - name: knowledge-graph
+          image: asia-south1-docker.pkg.dev/staging-433102/knowledge-graph/knowledge-graph:latest
+          ports:
+            - containerPort: 8081
+          volumeMounts:
+            - name: env-file
+              mountPath: /app/.env
+              subPath: .env
+            - name: env-file
+              mountPath: /app/newrelic.ini
+              subPath: newrelic.ini 
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1"
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+          livenessProbe:
+            tcpSocket:
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 2
+            failureThreshold: 2
+          readinessProbe:
+            tcpSocket:
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 2
+            failureThreshold: 2
+      volumes:
+        - name: env-file
+          emptyDir: {}
+

@@ -1,0 +1,171 @@
+pipeline {
+    agent any
+
+
+
+    parameters {
+      string(name: 'REPLICAS', description: 'Number of replicas for the deployment')
+      string(name: 'IMAGE_TAG', description: 'Docker image tag (e.g., default would be "latest") to use for the deployment', defaultValue: 'latest')
+      string(name: 'IMAGE_NAME', description: 'Docker image name (e.g., repo/pgbouncer, if not given an input, default would be chosen)', defaultValue: 'edoburu/pgbouncer')
+}
+
+
+    stages {
+        stage('Create Kubernetes Deployment YAML') {
+            steps {
+                script {
+                    // Define the path where the YAML file will be saved
+
+                    echo "this is the number of replica: ${params.REPLICAS}"
+                    echo "input image tag: ${params.IMAGE_TAG}"
+                    echo "input image name: ${params.IMAGE_NAME}"
+                    def deploymentYamlPath = 'pgbouncer-deployment.yaml'
+
+                    // Create the deployment YAML content
+                    def deploymentYamlContent = """\
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: pgb-ns
+spec:
+  replicas: ${params.REPLICAS}
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      serviceAccountName: mcore-auth-role
+      initContainers:
+      - name: vault-init
+        image: ${params.IMAGE_NAME}:${params.IMAGE_TAG}
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -e
+            echo "Creating directory for pgBouncer config..."
+            mkdir -p /etc/pgbouncer
+            chmod 777 /etc/pgbouncer
+
+            echo "Updating packages and installing required tools..."
+            apk update && apk add --no-cache curl jq
+
+            VAULT_ADDR="http://my-vault-internal.mom-vault:8200"
+            SA_TOKEN=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+            echo "Authenticating with Vault..."
+            VAULT_RESPONSE=\$(curl -s -X POST -H "X-Vault-Request: true" -d "{\\"jwt\\": \\"\$SA_TOKEN\\", \\"role\\": \\"mcore-role\\"}" \\
+              \$VAULT_ADDR/v1/auth/kubernetes/login)
+
+            echo "Vault authentication response:"
+            echo "\$VAULT_RESPONSE" | jq .
+
+            VAULT_TOKEN=\$(echo \$VAULT_RESPONSE | jq -r '.auth.client_token')
+            if [ -z "\$VAULT_TOKEN" ]; then
+              echo "Failed to get Vault token."
+              exit 1
+            fi
+
+            echo "Fetching pgbouncer.ini from Vault..."
+            PGB_RESPONSE=\$(curl -s -H "X-Vault-Token: \$VAULT_TOKEN" \$VAULT_ADDR/v1/pgbouncer/data/pgbouncer_ini)
+            echo "Raw Vault response for pgbouncer.ini:"
+            echo "\$PGB_RESPONSE" | jq .
+
+            PGB_CLI_CONFIG=\$(echo "\$PGB_RESPONSE" | jq -r '.data.data["pgbouncer.ini"]')
+            echo "Extracted pgbouncer.ini content:"
+            echo "\$PGB_CLI_CONFIG"
+            echo "\$PGB_CLI_CONFIG" > /etc/pgbouncer/pgbouncer.ini
+
+            echo "Fetching userlist.txt from Vault..."
+            USERLIST_RESPONSE=\$(curl -s -H "X-Vault-Token: \$VAULT_TOKEN" \$VAULT_ADDR/v1/pgbouncer/data/userlist_txt)
+            echo "Raw Vault response for userlist.txt:"
+            echo "\$USERLIST_RESPONSE" | jq .
+
+            USERLIST_CONFIG=\$(echo "\$USERLIST_RESPONSE" | jq -r '.data.data["userlist.txt"]')
+            echo "Extracted userlist.txt content:"
+            echo "\$USERLIST_CONFIG"
+            echo "\$USERLIST_CONFIG" > /etc/pgbouncer/userlist.txt
+
+            # Set appropriate permissions after writing the files
+            chown -R 70:70 /etc/pgbouncer
+            chmod 600 /etc/pgbouncer/pgbouncer.ini /etc/pgbouncer/userlist.txt
+        volumeMounts:
+        - name: pgbouncer-secrets
+          mountPath: /etc/pgbouncer
+        securityContext:
+          runAsUser: 0
+
+      containers:
+      - name: pgbouncer
+        image: ${params.IMAGE_NAME}:${params.IMAGE_TAG}
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: pgbouncer-secrets
+          mountPath: /etc/pgbouncer
+          readOnly: true
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        securityContext:
+          runAsUser: 70
+          runAsGroup: 70
+      
+      volumes:
+      - name: pgbouncer-secrets
+        emptyDir:
+"""
+
+                // Write the YAML content to the specified file path
+                writeFile file: deploymentYamlPath, text: deploymentYamlContent
+            }
+        }
+    }
+
+
+        stage('Verify YAML Content') {
+      steps {
+          script {
+              echo "Contents of the generated YAML file:"
+              sh 'cat pgbouncer-deployment.yaml'
+          }
+      }
+  }
+
+        stage('Apply Kubernetes Deployment') {
+            steps {
+                sh 'kubectl apply -f pgbouncer-deployment.yaml -n pgb-ns'
+            }
+        }
+
+          stage('Check Replicas and Image Name') {
+              steps {
+                  script {
+                      // Capture the number of replicas into an environment variable
+                      def replicas = sh(
+                          script: "kubectl get deployment pgbouncer -n pgb-ns -o jsonpath='{.spec.replicas}'", 
+                          returnStdout: true
+                      ).trim()
+
+                      // Capture the image name with tag into an environment variable
+                      def image = sh(
+                          script: "kubectl get deployment pgbouncer -n pgb-ns -o jsonpath='{.spec.template.spec.containers[*].image}'", 
+                          returnStdout: true
+                      ).trim()
+                      
+                      // Print the message with the number of replicas and the image name with tag
+                      echo "Replica modified to = ${replicas}"
+                      echo "Image using = ${image}"
+                  }
+              }
+          }
+      }
+  }
+

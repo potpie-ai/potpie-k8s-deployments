@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-graph
+  namespace: app # Replace with your desired namespace
+  labels:
+    app: knowledge-graph
+spec:
+  selector:
+    app: knowledge-graph
+  ports:
+    - protocol: TCP
+      port: 8081 # The port that the service will expose
+      targetPort: 8081 # Updated to the port on which the container is listening
+  type: ClusterIP # You can change this to NodePort or LoadBalancer if needed

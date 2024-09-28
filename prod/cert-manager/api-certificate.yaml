@@ -1,0 +1,15 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: potpie-prod-certificate-secret
+  namespace: micro-services
+spec:
+  secretName: potpie-prod-certificate-secret
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: production-api.potpie.ai
+  dnsNames:
+  - production-api.potpie.ai
+  - conversation-production-api.potpie.ai
+  

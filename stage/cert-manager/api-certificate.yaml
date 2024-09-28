@@ -1,0 +1,15 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: potpie-certificate-secret
+  namespace: devops
+spec:
+  secretName: potpie-certificate-secret
+  issuerRef:
+    name: letsencrypt-stage
+    kind: ClusterIssuer
+  commonName: stage-api.potpie.ai  
+  dnsNames:
+  - stage-api.potpie.ai 
+  - conversation-staging-api.potpie.ai
+  

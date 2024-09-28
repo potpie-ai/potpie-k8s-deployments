@@ -1,0 +1,19 @@
+  apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+    name: neo4j-enterprise-hpa
+    namespace: neo4j-db
+  spec:
+    scaleTargetRef:
+      apiVersion: apps/v1
+      kind: StatefulSet
+      name: neo4j-enterprise
+    minReplicas: 4  # Set this to your preferred minimum number of replicas
+    maxReplicas: 15  # Set this to your preferred maximum number of replicas
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70  # You can adjust this threshold

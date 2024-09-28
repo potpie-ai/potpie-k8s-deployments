@@ -1,0 +1,180 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'service', choices: ['celery-api', 'conversation-server', 'mom-api', 'neo4j-enterprise', 'pgbouncer'], description: 'Select the service for which HPA needs to be created')
+        string(name: 'minReplicas', defaultValue: '1', description: 'Minimum number of replicas')
+        string(name: 'maxReplicas', defaultValue: '10', description: 'Maximum number of replicas')
+    }
+
+    stages {
+        stage('Generate HPA File') {
+            steps {
+                script {
+                    def hpaFileContent = ''
+                    
+                    if (params.service == 'celery-api') {
+                        hpaFileContent = """
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: celery-api-hpa
+  namespace: micro-services
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: celery-api-deployment
+  minReplicas: ${params.minReplicas}
+  maxReplicas: ${params.maxReplicas}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80  # Target 50% CPU utilization
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80  # Target 50% CPU utilization
+"""
+                    } else if (params.service == 'conversation-server') {
+                        hpaFileContent = """
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: conversation-server-hpa
+  namespace: micro-services
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: conversation-server-deployment
+  minReplicas: ${params.minReplicas}
+  maxReplicas: ${params.maxReplicas}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80   
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80 
+"""
+                    } else if (params.service == 'neo4j-enterprise') {
+                        hpaFileContent = """
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: neo4j-enterprise-hpa
+  namespace: neo4j-db
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: neo4j-enterprise
+  minReplicas: ${params.minReplicas}  # Use dynamic parameter for minimum replicas
+  maxReplicas: ${params.maxReplicas}  # Use dynamic parameter for maximum replicas
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # You can adjust this threshold
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
+"""
+                    } else if (params.service == 'pgbouncer') {
+                        hpaFileContent = """
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pgbouncer-hpa
+  namespace: pgb-ns
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pgbouncer
+  minReplicas: ${params.minReplicas}
+  maxReplicas: ${params.maxReplicas}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # Target CPU utilization percentage
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70  # Target 50% CPU utilization     
+"""
+                    } else if (params.service == 'mom-api') {
+                        hpaFileContent = """
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mom-api-hpa
+  namespace: micro-services
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mom-api-deployment
+  minReplicas: ${params.minReplicas}
+  maxReplicas: ${params.maxReplicas}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80  # Target 50% CPU utilization
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80  # Target 50% CPU utilization
+"""
+                    }
+
+                    // Write the HPA configuration to a file
+                    writeFile file: "${params.service}-hpa.yaml", text: hpaFileContent
+                }
+            }
+        }
+
+        stage('Deploy HPA') {
+            steps {
+                script {
+                    // Command to deploy the HPA
+                    sh "kubectl apply -f ${params.service}-hpa.yaml"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Clean up HPA file after deployment
+            sh "rm -f ${params.service}-hpa.yaml"
+        }
+    }
+}

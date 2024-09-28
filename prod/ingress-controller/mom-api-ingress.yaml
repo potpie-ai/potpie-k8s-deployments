@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prod-ingress
+  namespace: micro-services
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"    # Set connection timeout (seconds)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"       # Increase read timeout (seconds)
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600" 
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+      - production-api.potpie.ai
+      - conversation-production-api.potpie.ai
+    secretName: potpie-prod-certificate-secret
+  rules:
+    - host: production-api.potpie.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mom-api-svc 
+                port:
+                  number: 8001
+    - host: conversation-production-api.potpie.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: convo-api-svc
+                port:
+                  number: 8001 

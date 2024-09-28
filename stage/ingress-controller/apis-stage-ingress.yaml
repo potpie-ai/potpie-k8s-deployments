@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-nginx
+  namespace: devops
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-stage"
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+      - stage-api.potpie.ai
+      - conversation-staging-api.potpie.ai
+    secretName: potpie-certificate-secret
+  rules:
+    - host: stage-api.potpie.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mom-api-svc 
+                port:
+                  number: 8001
+    - host: conversation-staging-api.potpie.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: convo-api-svc
+                port:
+                  number: 8001              

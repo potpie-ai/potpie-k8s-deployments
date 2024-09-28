@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+  namespace: neo4j-db
+spec:
+  serviceName: neo4j
+  replicas: 3
+  selector:
+    matchLabels:
+      app: neo4j
+  template:
+    metadata:
+      labels:
+        app: neo4j
+    spec:
+      serviceAccountName: mcore-auth-role
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: neo4j-pvc
+      - name: secrets
+        emptyDir:
+          medium: Memory
+      initContainers:
+      - name: vault-init
+        image: alpine:latest
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Installing required tools..."
+            apk update && apk add --no-cache curl jq
+
+            echo "Fetching credentials from Vault..."
+            VAULT_ADDR="http://vault-internal.vault:8200"
+            SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+            echo "Service Account Token: $SA_TOKEN"
+
+            VAULT_RESPONSE=$(curl -s -X POST -H "X-Vault-Request: true" -d "{\"jwt\": \"$SA_TOKEN\", \"role\": \"mcore-role\"}" \
+                $VAULT_ADDR/v1/auth/kubernetes/login)
+            echo "Vault Response: $VAULT_RESPONSE"
+
+            VAULT_TOKEN=$(echo $VAULT_RESPONSE | jq -r '.auth.client_token')
+            if [ -z "$VAULT_TOKEN" ]; then
+                echo "Failed to get Vault token."
+                exit 1
+            fi
+
+            echo "Fetching secrets..."
+            SECRET_RESPONSE=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/neo4j/data/secret)
+
+            echo $SECRET_RESPONSE
+            echo $SECRET_RESPONSE | jq -r '.data.data | to_entries[] | "export " + .key + "=\"" + .value + "\""' > /secrets/env.sh
+
+            cat /secrets/env.sh
+
+            echo "Secrets fetched and stored."
+        volumeMounts:
+        - name: secrets
+          mountPath: /secrets
+      containers:
+      - name: neo4j
+        image: neo4j:5.23.0-enterprise
+        ports:
+        - containerPort: 7474
+        - containerPort: 7687
+        # envFrom:
+        # - configMapRef:
+        #     name: neo4j-config
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: NEO4J_server_default__advertised__address
+          value: "$(POD_NAME).neo4j.$(POD_NAMESPACE).svc.cluster.local"
+        - name: NEO4J_server_bolt_advertised__address
+          value: "$(POD_NAME).neo4j.$(POD_NAMESPACE).svc.cluster.local:7687"
+        - name: NEO4J_server_http_advertised__address
+          value: "$(POD_NAME).neo4j.$(POD_NAMESPACE).svc.cluster.local:7474"
+        - name: NEO4J_dbms_mode
+          value: "CORE"
+        - name: NEO4J_causal__clustering_initial__discovery__members
+          value: "neo4j-0.neo4j.$(POD_NAMESPACE).svc.cluster.local:5000,neo4j-1.neo4j.$(POD_NAMESPACE).svc.cluster.local:5000,neo4j-2.neo4j.$(POD_NAMESPACE).svc.cluster.local:5000"
+        - name: NEO4J_causal__clustering_minimum__core__cluster__size__at__formation
+          value: "2"
+        - name: NEO4J_causal__clustering_minimum__core__cluster__size__at__runtime
+          value: "2"
+        - name: NEO4J_server_config_strict__validation_enabled
+          value: "false"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: secrets
+          mountPath: /vault/secrets
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            set -e
+
+            echo "printing vault secrets env.sh"
+            cat /vault/secrets/env.sh
+
+            . /vault/secrets/env.sh
+            exec tini -g -- /startup/docker-entrypoint.sh neo4j
+
+
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: neo4j
+#   namespace: neo4j-db
+# spec:
+#   selector:
+#     app: neo4j
+#   ports:
+#     - port: 7474
+#       targetPort: 7474
+#       name: http
+#     - port: 7687
+#       targetPort: 7687
+#       name: bolt

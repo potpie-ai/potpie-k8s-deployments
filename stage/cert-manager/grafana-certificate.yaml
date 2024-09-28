@@ -1,0 +1,15 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: monitoring-certificate-secret
+  namespace: monitoring
+spec:
+  secretName: monitoring-certificate-secret
+  issuerRef:
+    name: letsencrypt-stage
+    kind: ClusterIssuer
+  commonName: grafana-stage.potpie.ai  
+  dnsNames:
+  - grafana-stage.potpie.ai 
+ 
+  

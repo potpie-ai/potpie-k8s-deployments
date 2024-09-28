@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-nginx
+  namespace: monitoring
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.class: "nginx" 
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+      - grafana.potpie.ai
+    secretName: monitoring-certificate-secret
+  rules:
+    - host: grafana.potpie.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: my-grafana
+                port:
+                  number: 3000

@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mcore-auth-role-binding
+  namespace: pgb-ns
+subjects:
+- kind: ServiceAccount
+  name: mcore-auth-role
+  namespace: pgb-ns  # Ensure this matches the namespace of the ServiceAccount
+roleRef:
+  kind: Role
+  name: pgbouncer-role
+  apiGroup: rbac.authorization.k8s.io

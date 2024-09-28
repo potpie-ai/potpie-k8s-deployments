@@ -1,0 +1,78 @@
+neo4j:
+  name: "neo4j"
+  acceptLicenseAgreement: "yes"
+  minimumClusterSize: 2
+  # replicas: 4
+  edition: "enterprise"
+  resources:
+    memory: "2Gi"
+    cpu: "0.5"
+
+  logInitialPassword: true
+
+  password: ""  # Set password to an empty string or remove this line
+
+  # passwordFromSecret: "neo4j-db-auth-updated"  # Name of your Kubernetes secret
+
+core:
+  standalone:
+    instance:
+      count: 4  # Or whatever number of replicas you want
+
+# core:
+#   cluster:
+#     instancesCount: 4
+
+volumes:
+  data:
+    labels:
+      data: "true"
+    mode: dynamic
+    dynamic:
+      storageClassName: "neo4j-data"
+      requests:
+        storage: 30Gi
+
+service:
+  type: LoadBalancer
+  annotations:
+    # Add any additional annotations if needed
+  loadBalancerIP: ""  # Specify an external IP if required, else leave it to be auto-assigned
+
+
+
+
+
+
+
+
+#---------
+
+# neo4j:
+#   name: neo4j
+#   acceptLicenseAgreement: "yes"
+#   minimumClusterSize: 2
+#   edition: "enterprise"
+#   resources:
+#         memory: "2Gi"
+#         cpu: "0.5"
+  
+#   password:
+#     existingSecret: "neo4j-db-auth"  # Name of your Kubernetes secret
+#     secretKey: "NEO4J_AUTH_PASS"   
+
+# volumes:
+#   data:
+#     labels:
+#         data: "true"
+#     mode: dynamic
+#     dynamic:
+#       storageClassName: "neo4j-data"
+#       requests:
+#         storage: 30Gi
+
+# service:
+#   type: LoadBalancer
+#   annotations:
+#     # Add any additional annotations if needed
+#   loadBalancerIP: ""  # Specify an external IP if required, else leave it to be auto-assigned
