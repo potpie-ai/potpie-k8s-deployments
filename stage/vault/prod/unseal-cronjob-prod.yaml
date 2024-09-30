@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vault-unsealer
+  namespace: mom-vault
+spec:
+  schedule: "*/2 * * * *"  # Every 2 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: vault-unsealer-sa  # Ensure this is correct for your setup
+          containers:
+          - name: unsealer
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -ex  # Enable script debugging and exit on error
+
+              echo "===== Starting the Vault Unseal Process ====="
+
+              NAMESPACE="mom-vault"
+              echo "Namespace set to: $NAMESPACE"
+
+              echo "Fetching the Vault unseal key from the secret..."
+              UNSEAL_KEY=$(kubectl get secret vault-unseal-keys -n $NAMESPACE -o jsonpath='{.data.VAULT_UNSEAL_KEY}')
+              echo "Unseal key retrieved successfully."
+              echo "Length of unseal key: ${#UNSEAL_KEY} characters"
+
+              echo "Retrieving list of Vault pods in the namespace..."
+              PODS=$(kubectl get pods -n $NAMESPACE -l app.kubernetes.io/name=vault -o jsonpath='{.items[*].metadata.name}')
+              echo "Found the following Vault pods: $PODS"
+
+              if [ -z "$PODS" ]; then
+                echo "No Vault pods found with the specified label."
+                exit 1
+              fi
+
+              for POD in $PODS; do
+                  echo "===== Processing Pod: $POD ====="
+
+                  READY_STATE=$(kubectl get pod $POD -n $NAMESPACE -o jsonpath='{.status.containerStatuses[0].ready}')
+                  echo "Readiness state of pod $POD: $READY_STATE"
+
+                  if [ "$READY_STATE" != "true" ]; then
+                      echo "Pod $POD is not ready. Unsealing..."
+                      kubectl exec $POD -n $NAMESPACE -- vault operator unseal $UNSEAL_KEY
+                      
+                      echo "Configuring Kubernetes auth for pod $POD..."
+                      KUBE_HOST="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}"
+                      KUBE_CA_CERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                      TOKEN_REVIEW_JWT=$(kubectl exec $POD -n $NAMESPACE -- cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+                      echo "Writing Kubernetes auth configuration to Vault..."
+                      kubectl exec $POD -n $NAMESPACE -- vault write auth/kubernetes/config \
+                          token_reviewer_jwt="$TOKEN_REVIEW_JWT" \
+                          kubernetes_host="$KUBE_HOST" \
+                          kubernetes_ca_cert=@$KUBE_CA_CERT
+                      echo "Kubernetes auth configured for pod $POD."
+
+                  else
+                      echo "Pod $POD is ready. No action needed."
+                  fi
+
+                  echo "===== Completed Processing Pod: $POD ====="
+              done
+
+              echo "===== Vault Unseal Process Completed ====="
+          restartPolicy: OnFailure
