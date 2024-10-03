@@ -10,7 +10,7 @@ vault_token = input("Enter your Vault token: ")
 client = Client(url=vault_url, token=vault_token)
 
 # Define the mount point and path for your Vault secrets
-kv_mount_point = "mom-server"
+kv_mount_point = "potpie"
 secret_path = f"secret"
 
 # Load secrets from the JSON file
