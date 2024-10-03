@@ -4,10 +4,9 @@
 
 This project includes various Kubernetes microservices, along with their deployment configurations, service definitions, and Jenkins pipelines for automation. The following services are represented:
 
-- knowledge-graph
-- momentum-core
-- momentum-server
-- momentum as micro-services:
+
+- potpie
+- potpie as micro-services:
    - celery
    - mom-api
    - conversation-api (mom-api)

@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: momentum-server-deployment
-  namespace: mom-server
+  name: potpie-deployment
+  namespace: potpie
   labels:
-    app: momentum-server
+    app: potpie
 spec:
   replicas: 1  # Initial desired number of pod replicas
   selector:
     matchLabels:
-      app: momentum-server
+      app: potpie
   template:
     metadata:
       labels:
-        app: momentum-server
+        app: potpie
     spec:
       containers:
-      - name: momentum-server-container
-        image: asia-south1-docker.pkg.dev/staging-433102/momentum-server/momentum-server:v9 # Replace with your actual Docker image
+      - name: potpie-container
+        image: asia-south1-docker.pkg.dev/staging-433102/potpie/potpie:v1
         ports:
         - containerPort: 8001
         env:

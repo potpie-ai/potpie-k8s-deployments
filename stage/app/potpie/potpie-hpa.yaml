@@ -1,13 +1,13 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: momentum-server-hpa
-  namespace: mom-server
+  name: potpie-hpa
+  namespace: potpie
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: momentum-server-deployment
+    name: potpie-deployment
   minReplicas: 1
   maxReplicas: 3
   metrics:

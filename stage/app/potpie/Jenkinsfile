@@ -11,22 +11,22 @@ pipeline {
             steps {
                 script {
                     // Define the path where the YAML file will be saved
-                    def deploymentYamlPath = 'app/momentum-server/momentum-server-deployment.yaml'
+                    def deploymentYamlPath = 'app/potpie/potpie-deployment.yaml'
 
                     // Create the deployment YAML content
                     def deploymentYamlContent = """\
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: momentum-server-deployment
-  namespace: mom-server
+  name: potpie-deployment
+  namespace: potpie
   labels:
-    app: momentum-server
+    app: potpie-server
 spec:
   replicas: ${params.REPLICAS}
   selector:
     matchLabels:
-      app: momentum-server
+      app: potpie
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -35,13 +35,13 @@ spec:
   template:
     metadata:
       labels:
-        app: momentum-server
+        app: potpie
     spec:
       serviceAccountName: mcore-auth-role
       terminationGracePeriodSeconds: 30  # Time to wait for graceful shutdown
       initContainers:
         - name: vault-init
-          image: asia-south1-docker.pkg.dev/staging-433102/momentum-server/momentum-server:${params.IMAGE_TAG}
+          image: asia-south1-docker.pkg.dev/staging-433102/potpie/potpie:${params.IMAGE_TAG}
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -66,7 +66,7 @@ spec:
               
               echo "Fetching first secret from Vault..."
 
-              VAULT_SECRET=\$(curl -s -H "X-Vault-Token: \$VAULT_TOKEN" \$VAULT_ADDR/v1/secret3/data/mom-server)
+              VAULT_SECRET=\$(curl -s -H "X-Vault-Token: \$VAULT_TOKEN" \$VAULT_ADDR/v1/secret3/data/potpie)
 
               SECRET_DATA=\$(echo \$VAULT_SECRET | jq -r '.data.data')
               if [ -z "\$SECRET_DATA" ]; then
@@ -98,6 +98,7 @@ spec:
 
 
               # Fetch newrelic.ini from Vault
+              #not updating this to potpie
               NEWRELIC_INI=\$(curl -s -H "X-Vault-Token: \$VAULT_TOKEN" "\$VAULT_ADDR/v1/secret3/data/mom-server-newrelic" | jq -r '.data.data["newrelic.ini"]')
 
               # Write newrelic.ini to /app/newrelic.ini
@@ -112,8 +113,8 @@ spec:
             - name: secret-volume
               mountPath: /app  # Ensure this is mapped correctly
       containers:
-        - name: momentum-server
-          image: asia-south1-docker.pkg.dev/staging-433102/momentum-server/momentum-server:${params.IMAGE_TAG}
+        - name: potpie
+          image: asia-south1-docker.pkg.dev/staging-433102/potpie/potpie:${params.IMAGE_TAG}
           ports:
             - containerPort: 8001
           env:
@@ -163,9 +164,9 @@ spec:
         stage('Apply Kubernetes Deployment') {
             steps {
                 sh 'echo "generate yaml below"'
-                sh 'cat app/momentum-server/momentum-server-deployment.yaml'
+                sh 'cat app/potpie/potpie-deployment.yaml'
                 sh 'echo "now deployng the file"'
-                sh 'kubectl apply -f app/momentum-server/momentum-server-deployment.yaml -n mom-server'
+                sh 'kubectl apply -f app/potpie/potpie-deployment.yaml -n potpie'
             }
         }
 
@@ -174,13 +175,13 @@ spec:
                 script {
                     // Capture the number of replicas into an environment variable
                     def replicas = sh(
-                        script: "kubectl get deployment momentum-server-deployment -n mom-server -o jsonpath='{.spec.replicas}'", 
+                        script: "kubectl get deployment potpie-deployment -n potpie -o jsonpath='{.spec.replicas}'", 
                         returnStdout: true
                     ).trim()
 
                     // Capture the image name with tag into an environment variable
                     def image = sh(
-                        script: "kubectl get deployment momentum-server-deployment -n mom-server -o jsonpath='{.spec.template.spec.containers[*].image}'", 
+                        script: "kubectl get deployment potpie-deployment -n potpie -o jsonpath='{.spec.template.spec.containers[*].image}'", 
                         returnStdout: true
                     ).trim()
                     

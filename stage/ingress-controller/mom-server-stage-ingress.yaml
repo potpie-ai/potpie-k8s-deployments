@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: ingress-nginx
-  namespace: mom-server
+  namespace: potpie
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-stage"
     kubernetes.io/ingress.class: "nginx"
@@ -10,16 +10,16 @@ spec:
   ingressClassName: nginx
   tls:
   - hosts:
-      - stage-api.momentum.sh
+      - stage-api.potpie.ai
     secretName: tls-secret
   rules:
-    - host: stage-api.momentum.sh
+    - host: stage-api.potpie.ai
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: momentum-server-service 
+                name: potpie-service 
                 port:
                   number: 8001

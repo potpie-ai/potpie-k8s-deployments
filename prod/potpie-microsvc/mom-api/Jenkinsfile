@@ -11,7 +11,7 @@ pipeline {
             steps {
                 script {
                     // Define the path where the YAML file will be saved
-                    def deploymentYamlPath = 'mom-server-microsvc/mom-api/mom-api-deployment.yaml'
+                    def deploymentYamlPath = 'potpie-microsvc/mom-api/mom-api-deployment.yaml'
 
                     // Create the deployment YAML content
                     def deploymentYamlContent = """\
@@ -166,9 +166,9 @@ spec:
         stage('Apply Kubernetes Deployment') {
             steps {
                 sh 'echo "generate yaml below"'
-                sh 'cat mom-server-microsvc/mom-api/mom-api-deployment.yaml'
+                sh 'cat potpie-microsvc/mom-api/mom-api-deployment.yaml'
                 sh 'echo "now deploying the file"'
-                sh 'kubectl apply -f mom-server-microsvc/mom-api/mom-api-deployment.yaml -n micro-services'
+                sh 'kubectl apply -f potpie-microsvc/mom-api/mom-api-deployment.yaml -n micro-services'
             }
         }
 
