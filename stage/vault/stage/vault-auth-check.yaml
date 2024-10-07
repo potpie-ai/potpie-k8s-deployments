@@ -1,0 +1,89 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vault-auth-check
+  namespace: mom-vault
+spec:
+  schedule: "*/2 * * * *" # Every 1 minute
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: vault-unsealer-sa
+          containers:
+          - name: auth-checker
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -e  # Stop script on error
+
+              echo "Fetching the Vault token from the Kubernetes secret..."
+              VAULT_TOKEN=$(kubectl get secret vault-token-staging -n mom-vault -o jsonpath='{.data.VAULT_TOKEN_STAGE}' | base64 -d)
+              if [ -z "$VAULT_TOKEN" ]; then
+                echo "Failed to retrieve Vault token from secret."
+                exit 1
+              fi
+
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+              echo "Constructing Vault authentication request JSON data"
+              AUTH_JSON="{\"jwt\": \"$SA_TOKEN\", \"role\": \"mcore-role\"}"
+
+              VAULT_ADDR="http://my-vault-internal.mom-vault:8200"
+              UNIQUE_POD_NAME="vault-check-$(date +%s%3N)"  # Milliseconds timestamp approach
+
+              # Run a temporary pod with a unique name
+              kubectl run --rm -i $UNIQUE_POD_NAME --image=appropriate/curl --restart='Never' -- \
+                curl -s -X POST -H "Content-Type: application/json" -H "X-Vault-Request: true" \
+                --data "$AUTH_JSON" \
+                $VAULT_ADDR/v1/auth/kubernetes/login > /tmp/response.json
+
+              RESPONSE=$(cat /tmp/response.json)
+              echo "Vault authentication response:"
+              echo "$RESPONSE"
+
+              # Extract and output errors clearly
+              ERRORS=$(echo "$RESPONSE" | grep '"errors"' || echo "No errors found")
+              if [ "$ERRORS" != "No errors found" ]; then
+                echo "Errors found in response: $ERRORS"
+                echo "Full Response: $RESPONSE"
+              fi
+
+              if echo "$RESPONSE" | grep -q '"errors"'; then
+                echo "Vault authentication failed."
+
+                echo "Fetching list of Vault pods in the namespace..."
+                PODS=$(kubectl get pods -n mom-vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[*].metadata.name}')
+                echo "Found the following Vault pods: $PODS"
+
+                for POD in $PODS; do
+                    echo "===== Executing commands in Pod: $POD ====="
+                    echo "Logging into Vault..."
+                    kubectl -n mom-vault exec $POD -- vault login $VAULT_TOKEN
+
+                    echo "Configuring Kubernetes auth for pod $POD..."
+                    KUBE_HOST="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}"
+                    KUBE_CA_CERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                    TOKEN_REVIEW_JWT=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+                    kubectl -n mom-vault exec $POD -- vault write auth/kubernetes/config \
+                      token_reviewer_jwt="$TOKEN_REVIEW_JWT" \
+                      kubernetes_host="$KUBE_HOST" \
+                      kubernetes_ca_cert=@$KUBE_CA_CERT
+                    echo "Kubernetes auth configured for pod $POD."
+
+                    echo "===== Completed Processing Pod: $POD ====="
+                done
+
+                echo "Vault authentication reconfiguration complete for all pods."
+              else
+                echo "Vault authentication succeeded. No further action required."
+              fi
+          restartPolicy: OnFailure
+
+
+
+
+
