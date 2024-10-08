@@ -1,0 +1,29 @@
+neo4j:
+  name: "neo4j-cluster"
+  # image: "neo4j:5.24.1-enterprise"
+  minimumClusterSize: 3
+  edition: "enterprise"
+  passwordFromSecret: "neo4j-auth"  # This should be the name of your existing secret
+  config:
+    dbms.memory.transaction.total.max: '0'
+  acceptLicenseAgreement: "yes"
+  resources:
+    requests:
+      cpu: "1"
+      memory: "2Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+env:
+  NEO4J_PLUGINS: '["apoc"]'
+
+config:
+#  server.directories.plugins: "/var/lib/neo4j/labs"
+  dbms.security.procedures.unrestricted: "apoc.*"
+  dbms.security.procedures.allowlist: "apoc.*"
+
+volumes:
+  data:
+    mode: "dynamic"
+    dynamic:
+      storageClassName: premium-rwo
