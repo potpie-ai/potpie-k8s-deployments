@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mom-api-deployment
-  namespace: devops
+  namespace: micro-services
   labels:
     app: mom-api
 spec:

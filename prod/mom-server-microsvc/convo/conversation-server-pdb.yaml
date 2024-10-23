@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: conversation-server-pdb
+  namespace: micro-services
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: conversation-server  # Ensure this matches the labels in your deployment
