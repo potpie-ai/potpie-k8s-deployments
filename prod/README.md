@@ -12,7 +12,7 @@ This project includes various Kubernetes microservices, along with their deploym
    - mom-api
    - conversation-api (mom-api)
 
-- neo4j-helm
+- neo4j-cluster
 - PgBouncer
 - Ingress Controller
 
