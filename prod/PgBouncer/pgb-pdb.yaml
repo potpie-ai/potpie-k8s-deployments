@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pgbouncer-pdb
+  namespace: pgb-ns
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: pgbouncer

@@ -28,7 +28,7 @@ spec:
             echo "Updating packages and installing required tools..."
             apk update && apk add --no-cache curl jq
 
-            VAULT_ADDR="http://vault-internal.vault:8200"
+            VAULT_ADDR="http://my-vault-internal.mom-vault:8200"
             SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 
             echo "Authenticating with Vault..."
