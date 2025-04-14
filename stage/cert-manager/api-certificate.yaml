@@ -8,8 +8,8 @@ spec:
   issuerRef:
     name: letsencrypt-stage
     kind: ClusterIssuer
-  commonName: stage-api.potpie.ai  
+  commonName: stage-api.potpie.ai
   dnsNames:
-  - stage-api.potpie.ai 
-  - conversation-staging-api.potpie.ai
-  
+    - stage-api.potpie.ai
+    - conversation-staging-api.potpie.ai
+    - stage-workflows.potpie.ai
