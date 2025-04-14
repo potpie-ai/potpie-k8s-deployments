@@ -42,6 +42,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: workflows-api-svc
+                name: potpie-workflows
                 port:
                   number: 8080
