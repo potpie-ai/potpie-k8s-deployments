@@ -10,6 +10,6 @@ spec:
     kind: ClusterIssuer
   commonName: production-api.potpie.ai
   dnsNames:
-  - production-api.potpie.ai
-  - conversation-production-api.potpie.ai
-  
+    - production-api.potpie.ai
+    - conversation-production-api.potpie.ai
+    - workflows.potpie.ai
