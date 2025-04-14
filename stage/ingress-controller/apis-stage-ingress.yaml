@@ -9,10 +9,11 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-  - hosts:
-      - stage-api.potpie.ai
-      - conversation-staging-api.potpie.ai
-    secretName: potpie-certificate-secret
+    - hosts:
+        - stage-api.potpie.ai
+        - conversation-staging-api.potpie.ai
+        - stage-workflows.potpie.ai
+      secretName: potpie-certificate-secret
   rules:
     - host: stage-api.potpie.ai
       http:
@@ -21,7 +22,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: mom-api-svc 
+                name: mom-api-svc
                 port:
                   number: 8001
     - host: conversation-staging-api.potpie.ai
@@ -33,4 +34,14 @@ spec:
               service:
                 name: convo-api-svc
                 port:
-                  number: 8001              
+                  number: 8001
+    - host: workflows-staging-api.potpie.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: potpie-workflows
+                port:
+                  number: 8080
