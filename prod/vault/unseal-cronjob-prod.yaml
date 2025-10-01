@@ -12,9 +12,9 @@ spec:
           serviceAccountName: vault-unsealer-sa  # Ensure this is correct for your setup
           containers:
           - name: unsealer
-            image: bitnami/kubectl:latest
+            image: alpine/k8s:1.28.2
             command:
-            - /bin/bash
+            - /bin/sh
             - -c
             - |
               set -ex  # Enable script debugging and exit on error

@@ -4,23 +4,21 @@ metadata:
   name: vault-auth-check
   namespace: mom-vault
 spec:
-  schedule: "*/2 * * * *" # Every 1 minute
+  concurrencyPolicy: Allow
+  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
       template:
         spec:
-          serviceAccountName: vault-unsealer-sa
           containers:
-          - name: auth-checker
-            image: alpine/k8s:1.28.2
-            command:
+          - command:
             - /bin/sh
             - -c
             - |
               set -e  # Stop script on error
 
               echo "Fetching the Vault token from the Kubernetes secret..."
-              VAULT_TOKEN=$(kubectl get secret vault-token-staging -n mom-vault -o jsonpath='{.data.VAULT_TOKEN_STAGE}' | base64 -d)
+              VAULT_TOKEN=$(kubectl get secret vault-token-prod -n mom-vault -o jsonpath='{.data.VAULT_TOKEN_PROD}' | base64 -d)
               if [ -z "$VAULT_TOKEN" ]; then
                 echo "Failed to retrieve Vault token from secret."
                 exit 1
@@ -81,9 +79,19 @@ spec:
               else
                 echo "Vault authentication succeeded. No further action required."
               fi
+            image: alpine/k8s:1.28.2
+            imagePullPolicy: Always
+            name: auth-checker
+            resources: {}
+            terminationMessagePath: /dev/termination-log
+            terminationMessagePolicy: File
+          dnsPolicy: ClusterFirst
           restartPolicy: OnFailure
-
-
-
-
-
+          schedulerName: default-scheduler
+          securityContext: {}
+          serviceAccount: vault-unsealer-sa
+          serviceAccountName: vault-unsealer-sa
+          terminationGracePeriodSeconds: 30
+  schedule: '*/2 * * * *'
+  successfulJobsHistoryLimit: 3
+  suspend: false
