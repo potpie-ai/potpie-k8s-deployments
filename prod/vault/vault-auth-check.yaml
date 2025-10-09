@@ -95,3 +95,4 @@ spec:
   schedule: '*/2 * * * *'
   successfulJobsHistoryLimit: 3
   suspend: false
+
